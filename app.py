@@ -104,6 +104,12 @@ def build_conversation_context(messages, max_turns=3):
             conversation += f"Assistant: {msg['content']}\n"
     return conversation
 
+st.set_page_config(
+    page_title="Praneeth Kandula's Resume Assistant",
+    page_icon="💼",
+    layout="centered",
+    initial_sidebar_state="expanded"   
+)
 
 # --- Inject custom CSS ---
 st.markdown("""
