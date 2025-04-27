@@ -1,4 +1,4 @@
 streamlit==1.30.0
 openai==1.76.0
-numpy
-json
+numpy==1.26.4
+json==2.0.9
