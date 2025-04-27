@@ -56,7 +56,7 @@ def cosine_similarity(vec1, vec2):
     return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
 # --- Perform Semantic Search to Return CLosest Answer ---
-def find_best_cached_answer(user_question, threshold=0.85):
+def find_best_cached_answer(user_question, threshold=0.90):
     if "faq_cache" not in st.session_state:
         return None
 
