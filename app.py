@@ -7,6 +7,13 @@ Created on Fri Apr 25 14:28:22 2025
 """
 import streamlit as st
 from openai import OpenAI
+import numpy as np
+import json
+
+# --- Load the cache from JSON at startup ---
+if "faq_cache" not in st.session_state:
+    with open('faq_cache.json', 'r') as f:
+        st.session_state.faq_cache = json.load(f)
 
 # Initialize client
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -40,6 +47,40 @@ Feel free to ask me questions such as:
 
 What would you like to know?
 """
+
+
+# --- Cosine Similarity Function ---
+def cosine_similarity(vec1, vec2):
+    vec1 = np.array(vec1)
+    vec2 = np.array(vec2)
+    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+
+# --- Perform Semantic Search to Return CLosest Answer ---
+def find_best_cached_answer(user_question, threshold=0.85):
+    if "faq_cache" not in st.session_state:
+        return None
+
+    user_embedding = client.embeddings.create(
+        input=[user_question],
+        model="text-embedding-ada-002"
+    ).data[0].embedding
+
+    best_score = 0
+    best_answer = None
+
+    for entry in st.session_state.faq_cache:
+        cached_embedding = entry["embedding"]
+        score = cosine_similarity(user_embedding, cached_embedding)
+
+        if score > best_score:
+            best_score = score
+            best_answer = entry["answer"]
+
+    if best_score >= threshold:
+        return best_answer
+    else:
+        return None
+
 
 def build_conversation_context(messages, max_turns=3):
     """
@@ -166,9 +207,6 @@ for msg in st.session_state.messages:
             st.markdown(text)
 
 
-# Build conversation context
-context = build_conversation_context(st.session_state.messages, max_turns=3)
-
 # --- User Input ---
 user_input = st.chat_input("Ask me about Praneeth Kandula")
 
@@ -177,18 +215,31 @@ if user_input:
     st.chat_message("user").markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
 
-    # Call OpenAI Responses API
-    response = client.responses.create(
-        model="gpt-4o-mini",
-        input=context + f"User: {user_input}\nAssistant:",
-        instructions=instructions_prompt,
-        tools=[{
-            "type": "file_search",
-            "vector_store_ids": [st.secrets["VECTOR_STORE_ID"]]
-        }]
-    )
+    # First, attempt to find answer from FAQ cache
+    cached_answer = find_best_cached_answer(user_input)
 
-    # Show assistant response
-    assistant_msg = response.output_text
-    st.chat_message("assistant").markdown(assistant_msg)
-    st.session_state.messages.append({"role": "assistant", "content": assistant_msg})
+    if cached_answer:
+        # --- Serve from cache ---
+        assistant_msg = cached_answer
+        st.chat_message("assistant").markdown(assistant_msg)
+        st.session_state.messages.append({"role": "assistant", "content": assistant_msg})
+
+    else:
+        # --- No good match in cache, fallback to live OpenAI call ---
+
+        # Rebuild conversation context (after new user input added)
+        context = build_conversation_context(st.session_state.messages, max_turns=3)
+
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            input=context + f"User: {user_input}\nAssistant:",
+            instructions=instructions_prompt,
+            tools=[{
+                "type": "file_search",
+                "vector_store_ids": [st.secrets["VECTOR_STORE_ID"]]
+            }]
+        )
+
+        assistant_msg = response.output_text
+        st.chat_message("assistant").markdown(assistant_msg)
+        st.session_state.messages.append({"role": "assistant", "content": assistant_msg})
